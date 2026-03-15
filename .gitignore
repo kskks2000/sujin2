@@ -1,0 +1,10 @@
+__pycache__/
+.DS_Store
+.env
+.venv/
+.tmp_pg_logs/
+.tmp_pg_socket/
+frontend/.dart_tool/
+frontend/build/
+backend/.pytest_cache/
+backend/.ruff_cache/

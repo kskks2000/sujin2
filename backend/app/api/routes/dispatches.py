@@ -1,0 +1,64 @@
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+
+from app.api.deps import TenantContext, get_db, get_tenant_context
+from app.core.database import DatabaseManager
+from app.schemas.dispatches import (
+    DispatchCreateRequest,
+    DispatchDetail,
+    DispatchListResponse,
+    DispatchStatusUpdateRequest,
+)
+from app.services.tms_service import TmsService
+
+router = APIRouter()
+
+
+@router.get("", response_model=DispatchListResponse)
+def list_dispatches(
+    status_filter: str | None = Query(default=None, alias="status"),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: DatabaseManager = Depends(get_db),
+):
+    service = TmsService(db)
+    payload = service.list_dispatches(tenant.id, status_filter, limit, offset)
+    return DispatchListResponse.model_validate(payload)
+
+
+@router.get("/{dispatch_id}", response_model=DispatchDetail)
+def get_dispatch(
+    dispatch_id: str,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: DatabaseManager = Depends(get_db),
+):
+    service = TmsService(db)
+    payload = service.get_dispatch_detail(tenant.id, dispatch_id)
+    if not payload:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dispatch not found.")
+    return DispatchDetail.model_validate(payload)
+
+
+@router.post("", response_model=DispatchDetail, status_code=status.HTTP_201_CREATED)
+def create_dispatch(
+    body: DispatchCreateRequest,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: DatabaseManager = Depends(get_db),
+):
+    service = TmsService(db)
+    payload = service.create_dispatch(tenant.id, body)
+    return DispatchDetail.model_validate(payload)
+
+
+@router.patch("/{dispatch_id}/status", response_model=DispatchDetail)
+def update_dispatch_status(
+    dispatch_id: str,
+    body: DispatchStatusUpdateRequest,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: DatabaseManager = Depends(get_db),
+):
+    service = TmsService(db)
+    payload = service.update_dispatch_status(tenant.id, dispatch_id, body.status)
+    if not payload:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dispatch not found.")
+    return DispatchDetail.model_validate(payload)

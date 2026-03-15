@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sujin-tms-postgres
+    environment:
+      POSTGRES_DB: tms
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/01_tms_core.sql:/docker-entrypoint-initdb.d/01_tms_core.sql:ro
+      - ./db/02_seed_master_data.sql:/docker-entrypoint-initdb.d/02_seed_master_data.sql:ro
+      - ./db/03_seed_sample_data.sql:/docker-entrypoint-initdb.d/03_seed_sample_data.sql:ro
+      - ./db/04_auth_support.sql:/docker-entrypoint-initdb.d/04_auth_support.sql:ro
+
+  redis:
+    image: redis:7-alpine
+    container_name: sujin-tms-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+
+  api:
+    build:
+      context: ./backend
+    container_name: sujin-tms-api
+    environment:
+      TMS_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/tms
+      TMS_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        API_BASE_URL: http://localhost:8000/api/v1
+    container_name: sujin-tms-frontend
+    depends_on:
+      - api
+    ports:
+      - "3000:80"
+
+volumes:
+  postgres_data:
+  redis_data:
