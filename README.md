@@ -35,10 +35,13 @@ Copy [`.env.example`](/Users/robert/kcastle/codex/sujin2/.env.example) to `.env`
 The database is already designed with:
 
 - core TMS schema
+- load planning, allocation, and shipment consolidation tables
+- tariff and rating master data
+- SAP invoice interface staging jobs
 - initial master data
 - connected sample operational data for orders, shipments, dispatches, charges, invoices, and documents
 
 ## Notes
 
-- The current local machine does not have Flutter, Docker, or Terraform installed, so code generation was completed but full runtime validation is still pending for those layers.
+- Docker는 현재 로컬에서 실제 실행 중이며, 프런트 검증은 Flutter SDK 직접 설치 대신 Docker 기반 빌드로 확인했습니다.
 - The PostgreSQL schema and sample data were applied and verified directly against the local `tms` database.

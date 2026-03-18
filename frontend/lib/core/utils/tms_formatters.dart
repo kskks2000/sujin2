@@ -33,6 +33,7 @@ class TmsFormatters {
   static String status(String value) {
     const labels = {
       'planned': '계획',
+      'draft': '초안',
       'confirmed': '확정',
       'dispatched': '배차완료',
       'accepted': '수락',
@@ -40,7 +41,14 @@ class TmsFormatters {
       'delivered': '배송완료',
       'cancelled': '취소',
       'completed': '완료',
+      'ready_for_allocation': '배정준비',
+      'allocated': '배정완료',
+      'dispatch_ready': '배차대기',
       'open': '접수',
+      'requested': '요청',
+      'quoted': '회신',
+      'awarded': '확정',
+      'rejected': '반려',
     };
     return labels[value] ?? value.replaceAll('_', ' ');
   }
@@ -145,6 +153,14 @@ class TmsFormatters {
     final formatted =
         amount % 1 == 0 ? _count.format(amount) : _decimal.format(amount);
     return '${formatted}km';
+  }
+
+  static String money(dynamic value) {
+    final amount = _toNum(value);
+    if (amount == null) {
+      return '-';
+    }
+    return _currency.format(amount);
   }
 
   static int countMatching(List items, String field, String expected) {

@@ -58,7 +58,9 @@ class ShipmentsScreen extends StatelessWidget {
                   for (final item in items) ...[
                     _ShipmentCard(
                       shipmentNo: '${item['shipment_no']}',
-                      orderNo: '${item['order_no']}',
+                      orderSummary:
+                          '${item['order_summary'] ?? item['order_no'] ?? '-'}',
+                      orderCount: (item['order_count'] as num?)?.toInt() ?? 1,
                       status: '${item['status']}',
                       carrier: '${item['carrier_name']}',
                       pickupAt: TmsFormatters.dateTime(
@@ -85,7 +87,8 @@ class ShipmentsScreen extends StatelessWidget {
 class _ShipmentCard extends StatelessWidget {
   const _ShipmentCard({
     required this.shipmentNo,
-    required this.orderNo,
+    required this.orderSummary,
+    required this.orderCount,
     required this.status,
     required this.carrier,
     required this.pickupAt,
@@ -95,7 +98,8 @@ class _ShipmentCard extends StatelessWidget {
   });
 
   final String shipmentNo;
-  final String orderNo;
+  final String orderSummary;
+  final int orderCount;
   final String status;
   final String carrier;
   final String pickupAt;
@@ -134,12 +138,21 @@ class _ShipmentCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            '오더  $orderNo',
+            '오더  $orderSummary',
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                   color: AppTheme.ink,
                   fontWeight: FontWeight.w700,
                 ),
           ),
+          if (orderCount > 1) ...[
+            const SizedBox(height: 6),
+            Text(
+              '연결 오더 $orderCount건',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.muted),
+            ),
+          ],
           const SizedBox(height: 4),
           Text(
             '운송사  ${TmsFormatters.entity(carrier)}',

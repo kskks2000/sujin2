@@ -84,11 +84,35 @@ class ApiClient {
     return _fetchMap('/masters/snapshot', () {
       return {
         'organizations': <Map<String, dynamic>>[],
+        'carrier_organizations': <Map<String, dynamic>>[],
         'locations': <Map<String, dynamic>>[],
         'drivers': <Map<String, dynamic>>[],
         'vehicles': <Map<String, dynamic>>[],
+        'equipment_types': <Map<String, dynamic>>[],
       };
     });
+  }
+
+  Future<Map<String, dynamic>> fetchLoadPlans({String? status}) async {
+    final path = status == null ? '/load-plans' : '/load-plans?status=$status';
+    return _fetchMap(path, () {
+      final payload = DemoPayloads.loadPlans();
+      if (status == null) {
+        return payload;
+      }
+      final items = ((payload['items'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .where((item) => '${item['status']}' == status)
+          .toList();
+      return {
+        'items': items,
+        'total': items.length,
+      };
+    });
+  }
+
+  Future<Map<String, dynamic>> fetchAllocations() async {
+    return _fetchMap('/allocations', DemoPayloads.allocations);
   }
 
   Future<Map<String, dynamic>> fetchShipments() async {
@@ -101,6 +125,38 @@ class ApiClient {
 
   Future<Map<String, dynamic>> createOrder(Map<String, dynamic> payload) async {
     return _sendMap('POST', '/orders', payload, '운송오더 등록에 실패했습니다.');
+  }
+
+  Future<Map<String, dynamic>> createLoadPlan(Map<String, dynamic> payload) async {
+    return _sendMap('POST', '/load-plans', payload, '편성안 생성에 실패했습니다.');
+  }
+
+  Future<Map<String, dynamic>> updateLoadPlanStatus(
+    String loadPlanId,
+    String status,
+  ) async {
+    return _sendMap(
+      'PATCH',
+      '/load-plans/$loadPlanId/status',
+      {'status': status},
+      '편성안 상태 변경에 실패했습니다.',
+    );
+  }
+
+  Future<Map<String, dynamic>> createAllocation(Map<String, dynamic> payload) async {
+    return _sendMap('POST', '/allocations', payload, '배정 요청에 실패했습니다.');
+  }
+
+  Future<Map<String, dynamic>> awardAllocation(
+    String allocationId,
+    Map<String, dynamic> payload,
+  ) async {
+    return _sendMap(
+      'POST',
+      '/allocations/$allocationId/award',
+      payload,
+      '배정 확정에 실패했습니다.',
+    );
   }
 
   Future<Map<String, dynamic>> fetchOrderDetail(String orderId) async {

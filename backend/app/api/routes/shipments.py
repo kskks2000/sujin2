@@ -47,7 +47,10 @@ def create_shipment(
     db: DatabaseManager = Depends(get_db),
 ):
     service = TmsService(db)
-    payload = service.create_shipment(tenant.id, body, auth.user_id, auth.actor_location_id)
+    try:
+        payload = service.create_shipment(tenant.id, body, auth.user_id, auth.actor_location_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return ShipmentDetail.model_validate(payload)
 
 

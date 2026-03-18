@@ -1,8 +1,10 @@
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/presentation/login_screen.dart';
+import '../../features/allocations/presentation/allocations_screen.dart';
 import '../../features/dashboard/presentation/dashboard_screen.dart';
 import '../../features/dispatch/presentation/dispatch_screen.dart';
+import '../../features/load_plans/presentation/load_plans_screen.dart';
 import '../../features/orders/presentation/orders_screen.dart';
 import '../../features/shipments/presentation/shipments_screen.dart';
 import '../auth/session_controller.dart';
@@ -41,6 +43,16 @@ class AppRouter {
               path: '/orders',
               pageBuilder: (context, state) =>
                   const NoTransitionPage(child: OrdersScreen()),
+            ),
+            GoRoute(
+              path: '/load-plans',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: LoadPlansScreen()),
+            ),
+            GoRoute(
+              path: '/allocations',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: AllocationsScreen()),
             ),
             GoRoute(
               path: '/shipments',

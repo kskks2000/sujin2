@@ -7,7 +7,10 @@ This schema includes the core entities needed to start a TMS on PostgreSQL:
 - multi-tenant base (`tms.tenants`, `tms.app_users`)
 - master data (`organizations`, `locations`, `equipment_types`, `drivers`, `vehicles`)
 - operations (`transport_orders`, `order_lines`, `order_stops`, `shipments`, `shipment_stops`, `dispatches`, `tracking_events`)
+- planning and execution support (`load_plans`, `load_plan_orders`, `load_allocations`, `shipment_orders`)
+- commercial rating (`tariff_profiles`, `tariff_lines`)
 - finance and documents (`shipment_charges`, `invoices`, `invoice_lines`, `documents`)
+- external integration staging (`sap_interface_jobs`)
 - operational helpers (`status_history`, `v_dispatch_board`, `updated_at` trigger)
 
 The schema now uses PostgreSQL 18's built-in `uuidv7()` for generated primary keys.
@@ -50,9 +53,24 @@ Add audit columns and the `tms.audit_events` log table to an existing database:
 /Library/PostgreSQL/18/bin/psql -h localhost -U postgres -d tms -f /Users/robert/kcastle/codex/sujin2/db/06_audit_columns.sql
 ```
 
+Bring an older database up to the current professional TMS foundation:
+
+```bash
+/Library/PostgreSQL/18/bin/psql -h localhost -U postgres -d tms -f /Users/robert/kcastle/codex/sujin2/db/07_professional_foundation.sql
+```
+
+Canonicalize the shipment-to-order relationship so every shipment is backed by `shipment_orders`:
+
+```bash
+/Library/PostgreSQL/18/bin/psql -h localhost -U postgres -d tms -f /Users/robert/kcastle/codex/sujin2/db/08_shipment_order_canonicalization.sql
+```
+
 ## Notes
 
 - If you meant another kind of TMS, the table model should be adjusted before production use.
 - The local PostgreSQL server on this machine is reachable on `localhost:5432`, but the `postgres` account currently requires a password.
 - Existing rows keep their current UUID values; the UUIDv7 change only affects newly generated IDs.
 - `06_audit_columns.sql` is safe to re-run and also handles the extra tariff/load tables present in the current Docker database.
+- `07_professional_foundation.sql` adds missing planning/rating/integration tables for older installs, hardens tenant-scoped foreign keys, and adds stricter operational check constraints.
+- `07_professional_foundation.sql` is designed to be re-runnable on the current schema state.
+- `08_shipment_order_canonicalization.sql` backfills missing `shipment_orders`, makes the shipment primary order a deferrable DB-level invariant, and updates the dispatch-board view to show consolidated order summaries.

@@ -21,6 +21,12 @@ class ShellFrame extends StatelessWidget {
   static const items = <_NavItem>[
     _NavItem(label: '통합관제', icon: Icons.space_dashboard_rounded, path: '/'),
     _NavItem(label: '오더', icon: Icons.inventory_2_rounded, path: '/orders'),
+    _NavItem(label: '편성', icon: Icons.hub_rounded, path: '/load-plans'),
+    _NavItem(
+      label: '배정',
+      icon: Icons.assignment_ind_rounded,
+      path: '/allocations',
+    ),
     _NavItem(
       label: '출하',
       icon: Icons.local_shipping_rounded,

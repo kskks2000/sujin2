@@ -444,6 +444,45 @@ BEGIN
     notes = EXCLUDED.notes,
     metadata = EXCLUDED.metadata;
 
+  INSERT INTO tms.shipment_orders (
+    id,
+    shipment_id,
+    order_id,
+    linehaul_role,
+    pickup_seq,
+    delivery_seq
+  )
+  VALUES
+    (
+      '00000000-0000-0000-0000-000000045001',
+      '00000000-0000-0000-0000-000000040001',
+      '00000000-0000-0000-0000-000000010001',
+      'primary',
+      1,
+      1
+    ),
+    (
+      '00000000-0000-0000-0000-000000045002',
+      '00000000-0000-0000-0000-000000040002',
+      '00000000-0000-0000-0000-000000010002',
+      'primary',
+      1,
+      1
+    ),
+    (
+      '00000000-0000-0000-0000-000000045003',
+      '00000000-0000-0000-0000-000000040003',
+      '00000000-0000-0000-0000-000000010003',
+      'primary',
+      1,
+      1
+    )
+  ON CONFLICT (shipment_id, order_id) DO UPDATE
+  SET
+    linehaul_role = EXCLUDED.linehaul_role,
+    pickup_seq = EXCLUDED.pickup_seq,
+    delivery_seq = EXCLUDED.delivery_seq;
+
   INSERT INTO tms.shipment_stops (
     id,
     shipment_id,

@@ -60,6 +60,27 @@ ALTER TABLE tms.invoice_lines
 ALTER TABLE tms.documents
   ALTER COLUMN id SET DEFAULT uuidv7();
 
+ALTER TABLE IF EXISTS tms.load_plans
+  ALTER COLUMN id SET DEFAULT uuidv7();
+
+ALTER TABLE IF EXISTS tms.load_plan_orders
+  ALTER COLUMN id SET DEFAULT uuidv7();
+
+ALTER TABLE IF EXISTS tms.load_allocations
+  ALTER COLUMN id SET DEFAULT uuidv7();
+
+ALTER TABLE IF EXISTS tms.shipment_orders
+  ALTER COLUMN id SET DEFAULT uuidv7();
+
+ALTER TABLE IF EXISTS tms.tariff_profiles
+  ALTER COLUMN id SET DEFAULT uuidv7();
+
+ALTER TABLE IF EXISTS tms.tariff_lines
+  ALTER COLUMN id SET DEFAULT uuidv7();
+
+ALTER TABLE IF EXISTS tms.sap_interface_jobs
+  ALTER COLUMN id SET DEFAULT uuidv7();
+
 ALTER TABLE IF EXISTS tms.audit_events
   ALTER COLUMN id SET DEFAULT uuidv7();
 
