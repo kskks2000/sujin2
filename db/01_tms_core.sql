@@ -171,7 +171,7 @@ END;
 $$;
 
 CREATE TABLE IF NOT EXISTS tms.tenants (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   tenant_code TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   timezone TEXT NOT NULL DEFAULT 'Asia/Seoul',
@@ -182,7 +182,7 @@ CREATE TABLE IF NOT EXISTS tms.tenants (
 );
 
 CREATE TABLE IF NOT EXISTS tms.app_users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   tenant_id UUID NOT NULL REFERENCES tms.tenants(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   password_hash TEXT,
@@ -199,7 +199,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_app_users_tenant_email
   ON tms.app_users (tenant_id, lower(email));
 
 CREATE TABLE IF NOT EXISTS tms.organizations (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   tenant_id UUID NOT NULL REFERENCES tms.tenants(id) ON DELETE CASCADE,
   organization_code TEXT NOT NULL,
   name TEXT NOT NULL,
@@ -221,7 +221,7 @@ CREATE TABLE IF NOT EXISTS tms.organization_roles (
 );
 
 CREATE TABLE IF NOT EXISTS tms.locations (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   tenant_id UUID NOT NULL REFERENCES tms.tenants(id) ON DELETE CASCADE,
   location_code TEXT NOT NULL,
   name TEXT NOT NULL,
@@ -242,7 +242,7 @@ CREATE TABLE IF NOT EXISTS tms.locations (
 );
 
 CREATE TABLE IF NOT EXISTS tms.organization_locations (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   organization_id UUID NOT NULL REFERENCES tms.organizations(id) ON DELETE CASCADE,
   location_id UUID NOT NULL REFERENCES tms.locations(id) ON DELETE CASCADE,
   label TEXT,
@@ -253,7 +253,7 @@ CREATE TABLE IF NOT EXISTS tms.organization_locations (
 );
 
 CREATE TABLE IF NOT EXISTS tms.equipment_types (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   code TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   description TEXT,
@@ -263,7 +263,7 @@ CREATE TABLE IF NOT EXISTS tms.equipment_types (
 );
 
 CREATE TABLE IF NOT EXISTS tms.drivers (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   tenant_id UUID NOT NULL REFERENCES tms.tenants(id) ON DELETE CASCADE,
   carrier_org_id UUID NOT NULL REFERENCES tms.organizations(id) ON DELETE RESTRICT,
   employee_no TEXT,
@@ -279,7 +279,7 @@ CREATE TABLE IF NOT EXISTS tms.drivers (
 );
 
 CREATE TABLE IF NOT EXISTS tms.vehicles (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   tenant_id UUID NOT NULL REFERENCES tms.tenants(id) ON DELETE CASCADE,
   carrier_org_id UUID NOT NULL REFERENCES tms.organizations(id) ON DELETE RESTRICT,
   equipment_type_id UUID NOT NULL REFERENCES tms.equipment_types(id) ON DELETE RESTRICT,
@@ -298,7 +298,7 @@ CREATE TABLE IF NOT EXISTS tms.vehicles (
 );
 
 CREATE TABLE IF NOT EXISTS tms.status_history (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   tenant_id UUID NOT NULL REFERENCES tms.tenants(id) ON DELETE CASCADE,
   entity_type tms.entity_type NOT NULL,
   entity_id UUID NOT NULL,
@@ -313,7 +313,7 @@ CREATE INDEX IF NOT EXISTS ix_status_history_entity
   ON tms.status_history (tenant_id, entity_type, entity_id, changed_at DESC);
 
 CREATE TABLE IF NOT EXISTS tms.transport_orders (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   tenant_id UUID NOT NULL REFERENCES tms.tenants(id) ON DELETE CASCADE,
   order_no TEXT NOT NULL DEFAULT (
     'ORD-' ||
@@ -357,7 +357,7 @@ CREATE INDEX IF NOT EXISTS ix_transport_orders_status_dates
   ON tms.transport_orders (tenant_id, status, planned_pickup_from, planned_delivery_to);
 
 CREATE TABLE IF NOT EXISTS tms.order_lines (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   order_id UUID NOT NULL REFERENCES tms.transport_orders(id) ON DELETE CASCADE,
   line_no INTEGER NOT NULL,
   sku TEXT,
@@ -380,7 +380,7 @@ CREATE TABLE IF NOT EXISTS tms.order_lines (
 );
 
 CREATE TABLE IF NOT EXISTS tms.order_stops (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   order_id UUID NOT NULL REFERENCES tms.transport_orders(id) ON DELETE CASCADE,
   stop_seq INTEGER NOT NULL,
   stop_type tms.stop_type NOT NULL,
@@ -403,7 +403,7 @@ CREATE INDEX IF NOT EXISTS ix_order_stops_location
   ON tms.order_stops (location_id);
 
 CREATE TABLE IF NOT EXISTS tms.shipments (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   tenant_id UUID NOT NULL REFERENCES tms.tenants(id) ON DELETE CASCADE,
   shipment_no TEXT NOT NULL DEFAULT (
     'SHP-' ||
@@ -447,7 +447,7 @@ CREATE INDEX IF NOT EXISTS ix_shipments_order
   ON tms.shipments (order_id);
 
 CREATE TABLE IF NOT EXISTS tms.shipment_stops (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   shipment_id UUID NOT NULL REFERENCES tms.shipments(id) ON DELETE CASCADE,
   order_stop_id UUID REFERENCES tms.order_stops(id) ON DELETE SET NULL,
   stop_seq INTEGER NOT NULL,
@@ -478,7 +478,7 @@ CREATE INDEX IF NOT EXISTS ix_shipment_stops_status
   ON tms.shipment_stops (shipment_id, status, stop_seq);
 
 CREATE TABLE IF NOT EXISTS tms.dispatches (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   tenant_id UUID NOT NULL REFERENCES tms.tenants(id) ON DELETE CASCADE,
   dispatch_no TEXT NOT NULL DEFAULT (
     'DSP-' ||
@@ -529,7 +529,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_dispatches_one_active_per_shipment
   );
 
 CREATE TABLE IF NOT EXISTS tms.tracking_events (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   tenant_id UUID NOT NULL REFERENCES tms.tenants(id) ON DELETE CASCADE,
   shipment_id UUID NOT NULL REFERENCES tms.shipments(id) ON DELETE CASCADE,
   dispatch_id UUID REFERENCES tms.dispatches(id) ON DELETE SET NULL,
@@ -550,7 +550,7 @@ CREATE INDEX IF NOT EXISTS ix_tracking_events_shipment_time
   ON tms.tracking_events (shipment_id, occurred_at DESC);
 
 CREATE TABLE IF NOT EXISTS tms.shipment_charges (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   tenant_id UUID NOT NULL REFERENCES tms.tenants(id) ON DELETE CASCADE,
   shipment_id UUID REFERENCES tms.shipments(id) ON DELETE CASCADE,
   order_id UUID REFERENCES tms.transport_orders(id) ON DELETE CASCADE,
@@ -575,7 +575,7 @@ CREATE INDEX IF NOT EXISTS ix_shipment_charges_scope
   ON tms.shipment_charges (tenant_id, status, shipment_id, order_id);
 
 CREATE TABLE IF NOT EXISTS tms.invoices (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   tenant_id UUID NOT NULL REFERENCES tms.tenants(id) ON DELETE CASCADE,
   invoice_no TEXT NOT NULL DEFAULT (
     'INV-' ||
@@ -608,7 +608,7 @@ CREATE INDEX IF NOT EXISTS ix_invoices_org_status
   ON tms.invoices (tenant_id, organization_id, status, due_date);
 
 CREATE TABLE IF NOT EXISTS tms.invoice_lines (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   invoice_id UUID NOT NULL REFERENCES tms.invoices(id) ON DELETE CASCADE,
   charge_id UUID REFERENCES tms.shipment_charges(id) ON DELETE SET NULL,
   line_no INTEGER NOT NULL,
@@ -626,7 +626,7 @@ CREATE TABLE IF NOT EXISTS tms.invoice_lines (
 );
 
 CREATE TABLE IF NOT EXISTS tms.documents (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
   tenant_id UUID NOT NULL REFERENCES tms.tenants(id) ON DELETE CASCADE,
   entity_type tms.entity_type NOT NULL,
   entity_id UUID NOT NULL,
@@ -644,6 +644,133 @@ CREATE TABLE IF NOT EXISTS tms.documents (
 CREATE INDEX IF NOT EXISTS ix_documents_entity
   ON tms.documents (tenant_id, entity_type, entity_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS tms.audit_events (
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  tenant_id UUID NOT NULL REFERENCES tms.tenants(id) ON DELETE CASCADE,
+  entity_type TEXT NOT NULL,
+  entity_id UUID NOT NULL,
+  action TEXT NOT NULL,
+  actor_user_id UUID REFERENCES tms.app_users(id) ON DELETE SET NULL,
+  actor_location_id UUID REFERENCES tms.locations(id) ON DELETE SET NULL,
+  actor_latitude NUMERIC(9, 6),
+  actor_longitude NUMERIC(9, 6),
+  actor_ip INET,
+  actor_user_agent TEXT,
+  before_data JSONB,
+  after_data JSONB,
+  occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT ck_audit_events_latitude CHECK (actor_latitude IS NULL OR actor_latitude BETWEEN -90 AND 90),
+  CONSTRAINT ck_audit_events_longitude CHECK (actor_longitude IS NULL OR actor_longitude BETWEEN -180 AND 180)
+);
+
+CREATE INDEX IF NOT EXISTS ix_audit_events_entity
+  ON tms.audit_events (tenant_id, entity_type, entity_id, occurred_at DESC);
+
+CREATE INDEX IF NOT EXISTS ix_audit_events_actor
+  ON tms.audit_events (tenant_id, actor_user_id, occurred_at DESC);
+
+DO $$
+DECLARE
+  table_name TEXT;
+  table_ref REGCLASS;
+BEGIN
+  FOREACH table_name IN ARRAY ARRAY[
+    'app_users',
+    'organizations',
+    'locations',
+    'organization_locations',
+    'drivers',
+    'vehicles',
+    'transport_orders',
+    'order_lines',
+    'order_stops',
+    'shipments',
+    'shipment_stops',
+    'dispatches',
+    'shipment_charges',
+    'invoices',
+    'invoice_lines',
+    'documents'
+  ]
+  LOOP
+    table_ref := FORMAT('tms.%I', table_name)::REGCLASS;
+
+    EXECUTE FORMAT('ALTER TABLE %s ADD COLUMN IF NOT EXISTS created_by UUID', table_ref);
+    EXECUTE FORMAT('ALTER TABLE %s ADD COLUMN IF NOT EXISTS updated_by UUID', table_ref);
+    EXECUTE FORMAT('ALTER TABLE %s ADD COLUMN IF NOT EXISTS created_location_id UUID', table_ref);
+    EXECUTE FORMAT('ALTER TABLE %s ADD COLUMN IF NOT EXISTS updated_location_id UUID', table_ref);
+
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint c
+      JOIN pg_attribute a
+        ON a.attrelid = c.conrelid
+       AND a.attnum = ANY (c.conkey)
+      WHERE c.conrelid = table_ref
+        AND c.contype = 'f'
+        AND a.attname = 'created_by'
+    ) THEN
+      EXECUTE FORMAT(
+        'ALTER TABLE %s ADD CONSTRAINT fk_%I_cby FOREIGN KEY (created_by) REFERENCES tms.app_users(id) ON DELETE SET NULL',
+        table_ref,
+        table_name
+      );
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint c
+      JOIN pg_attribute a
+        ON a.attrelid = c.conrelid
+       AND a.attnum = ANY (c.conkey)
+      WHERE c.conrelid = table_ref
+        AND c.contype = 'f'
+        AND a.attname = 'updated_by'
+    ) THEN
+      EXECUTE FORMAT(
+        'ALTER TABLE %s ADD CONSTRAINT fk_%I_uby FOREIGN KEY (updated_by) REFERENCES tms.app_users(id) ON DELETE SET NULL',
+        table_ref,
+        table_name
+      );
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint c
+      JOIN pg_attribute a
+        ON a.attrelid = c.conrelid
+       AND a.attnum = ANY (c.conkey)
+      WHERE c.conrelid = table_ref
+        AND c.contype = 'f'
+        AND a.attname = 'created_location_id'
+    ) THEN
+      EXECUTE FORMAT(
+        'ALTER TABLE %s ADD CONSTRAINT fk_%I_cloc FOREIGN KEY (created_location_id) REFERENCES tms.locations(id) ON DELETE SET NULL',
+        table_ref,
+        table_name
+      );
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint c
+      JOIN pg_attribute a
+        ON a.attrelid = c.conrelid
+       AND a.attnum = ANY (c.conkey)
+      WHERE c.conrelid = table_ref
+        AND c.contype = 'f'
+        AND a.attname = 'updated_location_id'
+    ) THEN
+      EXECUTE FORMAT(
+        'ALTER TABLE %s ADD CONSTRAINT fk_%I_uloc FOREIGN KEY (updated_location_id) REFERENCES tms.locations(id) ON DELETE SET NULL',
+        table_ref,
+        table_name
+      );
+    END IF;
+  END LOOP;
+END
+$$;
+
 CREATE OR REPLACE FUNCTION tms.log_status_change()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -655,14 +782,16 @@ BEGIN
       entity_type,
       entity_id,
       from_status,
-      to_status
+      to_status,
+      changed_by
     )
     VALUES (
       NEW.tenant_id,
       TG_ARGV[0]::tms.entity_type,
       NEW.id,
       NULL,
-      NEW.status::TEXT
+      NEW.status::TEXT,
+      NULLIF(current_setting('tms.actor_user_id', TRUE), '')::UUID
     );
   ELSIF NEW.status IS DISTINCT FROM OLD.status THEN
     INSERT INTO tms.status_history (
@@ -670,14 +799,16 @@ BEGIN
       entity_type,
       entity_id,
       from_status,
-      to_status
+      to_status,
+      changed_by
     )
     VALUES (
       NEW.tenant_id,
       TG_ARGV[0]::tms.entity_type,
       NEW.id,
       OLD.status::TEXT,
-      NEW.status::TEXT
+      NEW.status::TEXT,
+      NULLIF(current_setting('tms.actor_user_id', TRUE), '')::UUID
     );
   END IF;
 

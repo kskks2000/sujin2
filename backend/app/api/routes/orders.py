@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.api.deps import TenantContext, get_db, get_tenant_context
+from app.api.deps import AuthContext, TenantContext, get_current_auth_context, get_db, get_tenant_context
 from app.core.database import DatabaseManager
 from app.schemas.orders import (
     OrderCreateRequest,
@@ -45,11 +45,12 @@ def get_order(
 def update_order(
     order_id: str,
     body: OrderUpdateRequest,
+    auth: AuthContext = Depends(get_current_auth_context),
     tenant: TenantContext = Depends(get_tenant_context),
     db: DatabaseManager = Depends(get_db),
 ):
     service = TmsService(db)
-    payload = service.update_order(tenant.id, order_id, body)
+    payload = service.update_order(tenant.id, order_id, body, auth.user_id, auth.actor_location_id)
     if not payload:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
     return OrderDetail.model_validate(payload)
@@ -58,9 +59,10 @@ def update_order(
 @router.post("", response_model=OrderDetail, status_code=status.HTTP_201_CREATED)
 def create_order(
     body: OrderCreateRequest,
+    auth: AuthContext = Depends(get_current_auth_context),
     tenant: TenantContext = Depends(get_tenant_context),
     db: DatabaseManager = Depends(get_db),
 ):
     service = TmsService(db)
-    payload = service.create_order(tenant.id, body)
+    payload = service.create_order(tenant.id, body, auth.user_id, auth.actor_location_id)
     return OrderDetail.model_validate(payload)

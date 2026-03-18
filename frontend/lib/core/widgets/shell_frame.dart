@@ -109,10 +109,10 @@ class ShellFrame extends StatelessWidget {
                   ),
                 ),
                 if (!desktop)
-                  Positioned(
+                  const Positioned(
                     top: 18,
                     right: 18,
-                    child: _SessionAction(compact: true),
+                    child: _CompactSessionTools(),
                   ),
               ],
             ),
@@ -249,9 +249,197 @@ class _SessionCard extends StatelessWidget {
                       color: Colors.white54,
                     ),
               ),
+              const SizedBox(height: 16),
+              Text(
+                '작업 위치',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.white70,
+                      letterSpacing: 1.1,
+                    ),
+              ),
+              const SizedBox(height: 10),
+              const _ActorLocationSelector(),
               const SizedBox(height: 14),
               const _SessionAction(),
             ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CompactSessionTools extends StatelessWidget {
+  const _CompactSessionTools();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: const [
+        _ActorLocationSelector(compact: true),
+        SizedBox(height: 10),
+        _SessionAction(compact: true),
+      ],
+    );
+  }
+}
+
+class _ActorLocationSelector extends StatelessWidget {
+  const _ActorLocationSelector({this.compact = false});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: SessionController.instance,
+      builder: (context, child) {
+        final controller = SessionController.instance;
+        final locations = controller.actorLocations;
+        final selected = controller.selectedActorLocation;
+        final loading = controller.isLoadingActorLocations;
+
+        if (!loading && locations.isEmpty && !compact) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.white.withOpacity(0.08)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '작업 위치를 불러오지 못했습니다.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.white70,
+                        ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: controller.refreshActorLocations,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('다시 불러오기'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final shortLabel = loading
+            ? '위치 조회중'
+            : selected?.code?.trim().isNotEmpty == true
+                ? selected!.code!.trim()
+                : selected?.name ?? '위치';
+        final longLabel = loading
+            ? '작업 위치를 불러오는 중입니다.'
+            : selected?.label ??
+                (locations.isEmpty ? '선택 가능한 작업 위치가 없습니다.' : '작업 위치를 선택하세요.');
+
+        return PopupMenuButton<String>(
+          enabled: locations.isNotEmpty,
+          tooltip: '작업 위치 선택',
+          onSelected: (value) {
+            SessionController.instance.selectActorLocation(value);
+          },
+          itemBuilder: (context) {
+            return [
+              for (final option in locations)
+                PopupMenuItem<String>(
+                  value: option.id,
+                  child: Row(
+                    children: [
+                      Icon(
+                        option.id == selected?.id
+                            ? Icons.check_circle_rounded
+                            : Icons.place_outlined,
+                        size: 18,
+                        color: option.id == selected?.id
+                            ? AppTheme.pine
+                            : AppTheme.shell,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          option.label,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ];
+          },
+          child: Container(
+            constraints: compact ? const BoxConstraints(minWidth: 118) : null,
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 12 : 14,
+              vertical: compact ? 11 : 13,
+            ),
+            decoration: BoxDecoration(
+              color: compact
+                  ? const Color(0xFF0F2032)
+                  : Colors.white.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(compact ? 18 : 18),
+              border: Border.all(color: Colors.white.withOpacity(0.08)),
+            ),
+            child: Row(
+              mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
+              children: [
+                if (loading)
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Colors.white.withOpacity(0.72),
+                      ),
+                    ),
+                  )
+                else
+                  Icon(
+                    Icons.place_rounded,
+                    size: compact ? 18 : 20,
+                    color: Colors.white70,
+                  ),
+                const SizedBox(width: 10),
+                if (compact)
+                  Text(
+                    shortLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  )
+                else
+                  Expanded(
+                    child: Text(
+                      longLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ),
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.expand_more_rounded,
+                  color: locations.isEmpty ? Colors.white38 : Colors.white60,
+                  size: compact ? 18 : 20,
+                ),
+              ],
+            ),
           ),
         );
       },

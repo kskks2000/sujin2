@@ -58,6 +58,34 @@ class AuthUserProfile {
   }
 }
 
+class ActorLocationOption {
+  const ActorLocationOption({
+    required this.id,
+    required this.name,
+    this.code,
+  });
+
+  final String id;
+  final String name;
+  final String? code;
+
+  factory ActorLocationOption.fromJson(Map<String, dynamic> json) {
+    return ActorLocationOption(
+      id: '${json['id']}',
+      name: '${json['name']}',
+      code: json['code']?.toString(),
+    );
+  }
+
+  String get label {
+    final trimmedCode = code?.trim();
+    if (trimmedCode == null || trimmedCode.isEmpty) {
+      return name;
+    }
+    return '$name · $trimmedCode';
+  }
+}
+
 class AuthSession {
   const AuthSession({
     required this.accessToken,
@@ -102,17 +130,24 @@ class SessionController extends ChangeNotifier {
   SessionController._(this._preferences);
 
   static const _storageKey = 'sujin_tms_session';
+  static const _actorLocationKey = 'sujin_tms_actor_location_id';
+  static const _defaultActorLocationCodes = ['SEOUL_HQ', 'ICHEON_DC'];
   static late SessionController instance;
 
   final SharedPreferences _preferences;
   final ApiClient _client = ApiClient();
   AuthSession? _session;
+  List<ActorLocationOption> _actorLocations = const [];
+  String? _actorLocationId;
+  bool _loadingActorLocations = false;
 
   static Future<SessionController> bootstrap() async {
     final preferences = await SharedPreferences.getInstance();
     final controller = SessionController._(preferences);
     instance = controller;
     ApiClient.accessTokenProvider = () => controller._session?.accessToken;
+    ApiClient.actorLocationIdProvider = () => controller._actorLocationId;
+    ApiClient.tenantCodeProvider = () => controller._session?.user.tenantCode;
     ApiClient.onUnauthorized = controller.expireSession;
     await controller._restoreSession();
     return controller;
@@ -120,6 +155,22 @@ class SessionController extends ChangeNotifier {
 
   AuthSession? get session => _session;
   bool get isAuthenticated => _session != null;
+  List<ActorLocationOption> get actorLocations =>
+      List.unmodifiable(_actorLocations);
+  String? get actorLocationId => _actorLocationId;
+  bool get isLoadingActorLocations => _loadingActorLocations;
+  ActorLocationOption? get selectedActorLocation {
+    final actorLocationId = _actorLocationId;
+    if (actorLocationId == null || actorLocationId.isEmpty) {
+      return null;
+    }
+    for (final option in _actorLocations) {
+      if (option.id == actorLocationId) {
+        return option;
+      }
+    }
+    return null;
+  }
 
   Future<void> signIn({
     required String email,
@@ -130,6 +181,7 @@ class SessionController extends ChangeNotifier {
       password: password,
     );
     _session = AuthSession.fromJson(payload);
+    await _syncActorLocations();
     await _persistSession();
     notifyListeners();
   }
@@ -143,8 +195,29 @@ class SessionController extends ChangeNotifier {
 
   Future<void> expireSession() async {
     _session = null;
+    _actorLocations = const [];
+    _actorLocationId = null;
+    _loadingActorLocations = false;
     await _preferences.remove(_storageKey);
+    await _preferences.remove(_actorLocationKey);
     notifyListeners();
+  }
+
+  Future<void> selectActorLocation(String locationId) async {
+    final normalizedId = locationId.trim();
+    if (normalizedId.isEmpty) {
+      return;
+    }
+    if (_actorLocations.every((option) => option.id != normalizedId)) {
+      return;
+    }
+    _actorLocationId = normalizedId;
+    await _preferences.setString(_actorLocationKey, normalizedId);
+    notifyListeners();
+  }
+
+  Future<void> refreshActorLocations() async {
+    await _syncActorLocations(notify: true);
   }
 
   Future<void> _restoreSession() async {
@@ -160,11 +233,90 @@ class SessionController extends ChangeNotifier {
       _session = _session?.copyWith(
         user: AuthUserProfile.fromJson(me['user'] as Map<String, dynamic>),
       );
+      await _syncActorLocations();
       await _persistSession();
     } catch (_) {
       _session = null;
+      _actorLocations = const [];
+      _actorLocationId = null;
       await _preferences.remove(_storageKey);
+      await _preferences.remove(_actorLocationKey);
     }
+  }
+
+  Future<void> _syncActorLocations({bool notify = false}) async {
+    if (_session == null) {
+      _actorLocations = const [];
+      _actorLocationId = null;
+      await _preferences.remove(_actorLocationKey);
+      return;
+    }
+
+    _loadingActorLocations = true;
+    if (notify) {
+      notifyListeners();
+    }
+    try {
+      final payload = await _client.fetchMasterSnapshot();
+      final locationItems = (payload['locations'] as List?) ?? const [];
+      final locations = locationItems
+          .map(
+            (item) => ActorLocationOption.fromJson(
+              Map<String, dynamic>.from(item as Map),
+            ),
+          )
+          .toList(growable: false);
+      final storedActorLocationId = _preferences.getString(_actorLocationKey);
+      _actorLocations = locations;
+      _actorLocationId = _resolveActorLocationId(
+        locations,
+        storedActorLocationId,
+      );
+
+      if (_actorLocationId == null) {
+        await _preferences.remove(_actorLocationKey);
+      } else {
+        await _preferences.setString(_actorLocationKey, _actorLocationId!);
+      }
+    } finally {
+      _loadingActorLocations = false;
+      if (notify) {
+        notifyListeners();
+      }
+    }
+  }
+
+  String? _resolveActorLocationId(
+    List<ActorLocationOption> locations,
+    String? storedActorLocationId,
+  ) {
+    if (locations.isEmpty) {
+      return null;
+    }
+
+    final preferredIds = <String>[
+      if (_actorLocationId != null) _actorLocationId!,
+      if (storedActorLocationId != null && storedActorLocationId.isNotEmpty)
+        storedActorLocationId,
+    ];
+
+    for (final preferredId in preferredIds) {
+      for (final location in locations) {
+        if (location.id == preferredId) {
+          return preferredId;
+        }
+      }
+    }
+
+    for (final code in _defaultActorLocationCodes) {
+      for (final location in locations) {
+        if (location.code?.trim() == code) {
+          return location.id;
+        }
+      }
+    }
+
+    return locations.first.id;
   }
 
   Future<void> _persistSession() async {

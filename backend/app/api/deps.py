@@ -1,5 +1,6 @@
 import json
 from dataclasses import dataclass
+from uuid import UUID
 
 from fastapi import Depends, Header, HTTPException, Request, status
 
@@ -22,6 +23,7 @@ class AuthContext:
     email: str
     full_name: str
     role_name: str
+    actor_location_id: str | None = None
 
 
 def get_db(request: Request) -> DatabaseManager:
@@ -55,8 +57,10 @@ def get_tenant_context(
 
 def get_current_auth_context(
     tenant: TenantContext = Depends(get_tenant_context),
+    db: DatabaseManager = Depends(get_db),
     cache: CacheManager = Depends(get_cache),
     authorization: str | None = Header(default=None),
+    actor_location_id: str | None = Header(default=None, alias="X-Actor-Location-Id"),
 ) -> AuthContext:
     if authorization is None or not authorization.lower().startswith("bearer "):
         raise HTTPException(
@@ -92,6 +96,30 @@ def get_current_auth_context(
             detail="현재 테넌트에서는 사용할 수 없는 계정입니다.",
         )
 
+    if actor_location_id is not None:
+        try:
+            UUID(actor_location_id)
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="X-Actor-Location-Id must be a valid UUID.",
+            ) from error
+
+        location = db.fetch_one(
+            """
+            SELECT id
+            FROM tms.locations
+            WHERE tenant_id = %s::uuid
+              AND id = %s::uuid
+            """,
+            (tenant.id, actor_location_id),
+        )
+        if not location:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="현재 테넌트에서 사용할 수 없는 위치입니다.",
+            )
+
     return AuthContext(
         access_token=access_token,
         user_id=str(payload["user"]["id"]),
@@ -100,4 +128,5 @@ def get_current_auth_context(
         email=str(payload["user"]["email"]),
         full_name=str(payload["user"]["full_name"]),
         role_name=str(payload["user"]["role_name"]),
+        actor_location_id=actor_location_id,
     )

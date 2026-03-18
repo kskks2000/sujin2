@@ -10,6 +10,8 @@ This schema includes the core entities needed to start a TMS on PostgreSQL:
 - finance and documents (`shipment_charges`, `invoices`, `invoice_lines`, `documents`)
 - operational helpers (`status_history`, `v_dispatch_board`, `updated_at` trigger)
 
+The schema now uses PostgreSQL 18's built-in `uuidv7()` for generated primary keys.
+
 ## Apply
 
 Create the database:
@@ -36,7 +38,21 @@ Seed connected sample operational data:
 /Library/PostgreSQL/18/bin/psql -h localhost -U postgres -d tms -f /Users/robert/kcastle/codex/sujin2/db/03_seed_sample_data.sql
 ```
 
+Upgrade an existing database from random UUID defaults to UUIDv7 defaults:
+
+```bash
+/Library/PostgreSQL/18/bin/psql -h localhost -U postgres -d tms -f /Users/robert/kcastle/codex/sujin2/db/05_uuid_v7_defaults.sql
+```
+
+Add audit columns and the `tms.audit_events` log table to an existing database:
+
+```bash
+/Library/PostgreSQL/18/bin/psql -h localhost -U postgres -d tms -f /Users/robert/kcastle/codex/sujin2/db/06_audit_columns.sql
+```
+
 ## Notes
 
 - If you meant another kind of TMS, the table model should be adjusted before production use.
 - The local PostgreSQL server on this machine is reachable on `localhost:5432`, but the `postgres` account currently requires a password.
+- Existing rows keep their current UUID values; the UUIDv7 change only affects newly generated IDs.
+- `06_audit_columns.sql` is safe to re-run and also handles the extra tariff/load tables present in the current Docker database.

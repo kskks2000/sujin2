@@ -1,11 +1,11 @@
-import 'dart:async';
-
 import 'package:dio/dio.dart';
 
 import 'demo_payloads.dart';
 
 class ApiClient {
   static String? Function()? accessTokenProvider;
+  static String? Function()? actorLocationIdProvider;
+  static String? Function()? tenantCodeProvider;
   static Future<void> Function()? onUnauthorized;
 
   ApiClient()
@@ -26,6 +26,16 @@ class ApiClient {
           final accessToken = accessTokenProvider?.call();
           if (accessToken != null && accessToken.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $accessToken';
+          }
+          final tenantCode = tenantCodeProvider?.call();
+          if (tenantCode != null && tenantCode.isNotEmpty) {
+            options.headers['X-Tenant-Code'] = tenantCode;
+          }
+          final actorLocationId = actorLocationIdProvider?.call();
+          if (actorLocationId != null && actorLocationId.isNotEmpty) {
+            options.headers['X-Actor-Location-Id'] = actorLocationId;
+          } else {
+            options.headers.remove('X-Actor-Location-Id');
           }
           handler.next(options);
         },

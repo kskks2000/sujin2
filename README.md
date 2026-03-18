@@ -25,6 +25,9 @@ This workspace now contains a practical TMS starter built around:
 - FastAPI backend
 - Flutter web frontend
 
+The current Docker Compose database volume is still on PostgreSQL 16.
+If you want Docker to move to PostgreSQL 18 for `uuidv7()`, that needs a separate data-volume upgrade or a fresh database rebuild.
+
 Copy [`.env.example`](/Users/robert/kcastle/codex/sujin2/.env.example) to `.env` if you want to customize URLs.
 
 ## Seeded sample data

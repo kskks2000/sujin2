@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import json
+from decimal import Decimal
 import os
-from uuid import uuid4
 
 from psycopg.types.json import Jsonb
 
@@ -12,10 +11,22 @@ from app.schemas.orders import OrderCreateRequest
 from app.schemas.shipments import ShipmentCreateRequest
 
 
+def _json_value(value):
+    if isinstance(value, Decimal):
+        return float(value)
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {key: _json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_value(item) for item in value]
+    return value
+
+
 def _serialize_records(rows):
     return [
         {
-            key: value.isoformat() if hasattr(value, "isoformat") else value
+            key: _json_value(value)
             for key, value in row.items()
         }
         for row in rows
@@ -26,7 +37,7 @@ def _serialize_record(row):
     if row is None:
         return None
     return {
-        key: value.isoformat() if hasattr(value, "isoformat") else value
+        key: _json_value(value)
         for key, value in row.items()
     }
 
@@ -38,6 +49,61 @@ class TmsService:
         )
         if db is None:
             self.db.open()
+
+    def _set_actor_context(self, cur, actor_user_id: str | None, actor_location_id: str | None) -> None:
+        cur.execute("SELECT set_config('tms.actor_user_id', %s, true)", (actor_user_id or "",))
+        cur.execute("SELECT set_config('tms.actor_location_id', %s, true)", (actor_location_id or "",))
+
+    def _record_audit_event(
+        self,
+        tenant_id: str,
+        entity_type: str,
+        entity_id: str,
+        action: str,
+        actor_user_id: str | None = None,
+        actor_location_id: str | None = None,
+        before_data: dict | None = None,
+        after_data: dict | None = None,
+    ) -> None:
+        before_payload = Jsonb(before_data) if before_data is not None else None
+        after_payload = Jsonb(after_data) if after_data is not None else None
+
+        with self.db.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO tms.audit_events (
+                  tenant_id,
+                  entity_type,
+                  entity_id,
+                  action,
+                  actor_user_id,
+                  actor_location_id,
+                  before_data,
+                  after_data
+                )
+                VALUES (
+                  %s::uuid,
+                  %s,
+                  %s::uuid,
+                  %s,
+                  %s::uuid,
+                  %s::uuid,
+                  %s,
+                  %s
+                )
+                """,
+                (
+                    tenant_id,
+                    entity_type,
+                    entity_id,
+                    action,
+                    actor_user_id,
+                    actor_location_id,
+                    before_payload,
+                    after_payload,
+                ),
+            )
+            conn.commit()
 
     def _fetch_order_core(self, tenant_id: str, order_id: str):
         row = self.db.fetch_one(
@@ -165,13 +231,20 @@ class TmsService:
     def get_order_detail(self, tenant_id: str, order_id: str):
         return self._fetch_order_core(tenant_id, order_id)
 
-    def create_order(self, tenant_id: str, body: OrderCreateRequest):
-        order_id = str(uuid4())
+    def create_order(
+        self,
+        tenant_id: str,
+        body: OrderCreateRequest,
+        actor_user_id: str | None = None,
+        actor_location_id: str | None = None,
+    ):
+        actor_user_id = actor_user_id or body.created_by
+
         with self.db.connection() as conn, conn.cursor() as cur:
+            self._set_actor_context(cur, actor_user_id, actor_location_id)
             cur.execute(
                 """
                 INSERT INTO tms.transport_orders (
-                  id,
                   tenant_id,
                   customer_org_id,
                   shipper_org_id,
@@ -189,17 +262,20 @@ class TmsService:
                   total_volume_m3,
                   notes,
                   metadata,
-                  created_by
+                  created_by,
+                  updated_by,
+                  created_location_id,
+                  updated_location_id
                 )
                 VALUES (
-                  %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s::uuid,
+                  %s::uuid, %s::uuid, %s::uuid, %s::uuid,
                   %s::tms.transport_mode, %s::tms.service_level, %s::tms.order_status,
                   %s, %s, %s::timestamptz, %s::timestamptz, %s::timestamptz, %s::timestamptz,
-                  %s, %s, %s, %s, %s::uuid
+                  %s, %s, %s, %s, %s::uuid, %s::uuid, %s::uuid, %s::uuid
                 )
+                RETURNING id::text
                 """,
                 (
-                    order_id,
                     tenant_id,
                     body.customer_org_id,
                     body.shipper_org_id,
@@ -217,20 +293,24 @@ class TmsService:
                     body.total_volume_m3,
                     body.notes,
                     Jsonb(body.metadata),
-                    body.created_by,
+                    actor_user_id,
+                    actor_user_id,
+                    actor_location_id,
+                    actor_location_id,
                 ),
             )
+            order_id = cur.fetchone()[0]
             for index, line in enumerate(body.lines, start=1):
                 cur.execute(
                     """
                     INSERT INTO tms.order_lines (
-                      id, order_id, line_no, sku, description, quantity, package_type,
-                      weight_kg, volume_m3, pallet_count, metadata
+                      order_id, line_no, sku, description, quantity, package_type,
+                      weight_kg, volume_m3, pallet_count, metadata,
+                      created_by, updated_by, created_location_id, updated_location_id
                     )
-                    VALUES (%s::uuid, %s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::uuid, %s::uuid, %s::uuid, %s::uuid)
                     """,
                     (
-                        str(uuid4()),
                         order_id,
                         index,
                         line.sku,
@@ -241,19 +321,23 @@ class TmsService:
                         line.volume_m3,
                         line.pallet_count,
                         Jsonb(line.metadata),
+                        actor_user_id,
+                        actor_user_id,
+                        actor_location_id,
+                        actor_location_id,
                     ),
                 )
             for index, stop in enumerate(body.stops, start=1):
                 cur.execute(
                     """
                     INSERT INTO tms.order_stops (
-                      id, order_id, stop_seq, stop_type, location_id, contact_name,
-                      contact_phone, planned_arrival_from, planned_arrival_to, notes
+                      order_id, stop_seq, stop_type, location_id, contact_name,
+                      contact_phone, planned_arrival_from, planned_arrival_to, notes,
+                      created_by, updated_by, created_location_id, updated_location_id
                     )
-                    VALUES (%s::uuid, %s::uuid, %s, %s::tms.stop_type, %s::uuid, %s, %s, %s::timestamptz, %s::timestamptz, %s)
+                    VALUES (%s::uuid, %s, %s::tms.stop_type, %s::uuid, %s, %s, %s::timestamptz, %s::timestamptz, %s, %s::uuid, %s::uuid, %s::uuid, %s::uuid)
                     """,
                     (
-                        str(uuid4()),
                         order_id,
                         index,
                         stop.stop_type,
@@ -263,25 +347,41 @@ class TmsService:
                         stop.planned_arrival_from,
                         stop.planned_arrival_to,
                         stop.notes,
+                        actor_user_id,
+                        actor_user_id,
+                        actor_location_id,
+                        actor_location_id,
                     ),
                 )
             conn.commit()
-        return self._fetch_order_core(tenant_id, order_id)
 
-    def update_order(self, tenant_id: str, order_id: str, body: OrderCreateRequest):
-        existing = self.db.fetch_one(
-            """
-            SELECT id
-            FROM tms.transport_orders
-            WHERE tenant_id = %s
-              AND id = %s::uuid
-            """,
-            (tenant_id, order_id),
+        payload = self._fetch_order_core(tenant_id, order_id)
+        self._record_audit_event(
+            tenant_id,
+            "order",
+            order_id,
+            "create",
+            actor_user_id,
+            actor_location_id,
+            after_data=payload,
         )
-        if not existing:
+        return payload
+
+    def update_order(
+        self,
+        tenant_id: str,
+        order_id: str,
+        body: OrderCreateRequest,
+        actor_user_id: str | None = None,
+        actor_location_id: str | None = None,
+    ):
+        actor_user_id = actor_user_id or body.created_by
+        before_payload = self._fetch_order_core(tenant_id, order_id)
+        if not before_payload:
             return None
 
         with self.db.connection() as conn, conn.cursor() as cur:
+            self._set_actor_context(cur, actor_user_id, actor_location_id)
             cur.execute(
                 """
                 UPDATE tms.transport_orders
@@ -302,7 +402,8 @@ class TmsService:
                   total_volume_m3 = %s,
                   notes = %s,
                   metadata = %s,
-                  created_by = %s::uuid
+                  updated_by = %s::uuid,
+                  updated_location_id = %s::uuid
                 WHERE tenant_id = %s::uuid
                   AND id = %s::uuid
                 """,
@@ -323,7 +424,8 @@ class TmsService:
                     body.total_volume_m3,
                     body.notes,
                     Jsonb(body.metadata),
-                    body.created_by,
+                    actor_user_id,
+                    actor_location_id,
                     tenant_id,
                     order_id,
                 ),
@@ -336,13 +438,13 @@ class TmsService:
                 cur.execute(
                     """
                     INSERT INTO tms.order_lines (
-                      id, order_id, line_no, sku, description, quantity, package_type,
-                      weight_kg, volume_m3, pallet_count, metadata
+                      order_id, line_no, sku, description, quantity, package_type,
+                      weight_kg, volume_m3, pallet_count, metadata,
+                      created_by, updated_by, created_location_id, updated_location_id
                     )
-                    VALUES (%s::uuid, %s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::uuid, %s::uuid, %s::uuid, %s::uuid)
                     """,
                     (
-                        str(uuid4()),
                         order_id,
                         index,
                         line.sku,
@@ -353,6 +455,10 @@ class TmsService:
                         line.volume_m3,
                         line.pallet_count,
                         Jsonb(line.metadata),
+                        actor_user_id,
+                        actor_user_id,
+                        actor_location_id,
+                        actor_location_id,
                     ),
                 )
             cur.execute(
@@ -363,13 +469,13 @@ class TmsService:
                 cur.execute(
                     """
                     INSERT INTO tms.order_stops (
-                      id, order_id, stop_seq, stop_type, location_id, contact_name,
-                      contact_phone, planned_arrival_from, planned_arrival_to, notes
+                      order_id, stop_seq, stop_type, location_id, contact_name,
+                      contact_phone, planned_arrival_from, planned_arrival_to, notes,
+                      created_by, updated_by, created_location_id, updated_location_id
                     )
-                    VALUES (%s::uuid, %s::uuid, %s, %s::tms.stop_type, %s::uuid, %s, %s, %s::timestamptz, %s::timestamptz, %s)
+                    VALUES (%s::uuid, %s, %s::tms.stop_type, %s::uuid, %s, %s, %s::timestamptz, %s::timestamptz, %s, %s::uuid, %s::uuid, %s::uuid, %s::uuid)
                     """,
                     (
-                        str(uuid4()),
                         order_id,
                         index,
                         stop.stop_type,
@@ -379,11 +485,26 @@ class TmsService:
                         stop.planned_arrival_from,
                         stop.planned_arrival_to,
                         stop.notes,
+                        actor_user_id,
+                        actor_user_id,
+                        actor_location_id,
+                        actor_location_id,
                     ),
                 )
             conn.commit()
 
-        return self._fetch_order_core(tenant_id, order_id)
+        payload = self._fetch_order_core(tenant_id, order_id)
+        self._record_audit_event(
+            tenant_id,
+            "order",
+            order_id,
+            "update",
+            actor_user_id,
+            actor_location_id,
+            before_data=before_payload,
+            after_data=payload,
+        )
+        return payload
 
     def list_shipments(self, tenant_id: str, status_filter: str | None, limit: int, offset: int):
         filters = ["s.tenant_id = %s"]
@@ -476,13 +597,18 @@ class TmsService:
         payload["stops"] = stops
         return payload
 
-    def create_shipment(self, tenant_id: str, body: ShipmentCreateRequest):
-        shipment_id = str(uuid4())
+    def create_shipment(
+        self,
+        tenant_id: str,
+        body: ShipmentCreateRequest,
+        actor_user_id: str | None = None,
+        actor_location_id: str | None = None,
+    ):
         with self.db.connection() as conn, conn.cursor(row_factory=None) as cur:
+            self._set_actor_context(cur, actor_user_id, actor_location_id)
             cur.execute(
                 """
                 INSERT INTO tms.shipments (
-                  id,
                   tenant_id,
                   order_id,
                   carrier_org_id,
@@ -496,16 +622,20 @@ class TmsService:
                   total_volume_m3,
                   total_distance_km,
                   notes,
-                  metadata
+                  metadata,
+                  created_by,
+                  updated_by,
+                  created_location_id,
+                  updated_location_id
                 )
                 VALUES (
-                  %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s::tms.transport_mode,
+                  %s::uuid, %s::uuid, %s::uuid, %s::tms.transport_mode,
                   %s::tms.service_level, %s::uuid, %s::tms.shipment_status, %s::timestamptz,
-                  %s::timestamptz, %s, %s, %s, %s, %s
+                  %s::timestamptz, %s, %s, %s, %s, %s, %s::uuid, %s::uuid, %s::uuid, %s::uuid
                 )
+                RETURNING id::text
                 """,
                 (
-                    shipment_id,
                     tenant_id,
                     body.order_id,
                     body.carrier_org_id,
@@ -520,8 +650,13 @@ class TmsService:
                     body.total_distance_km,
                     body.notes,
                     Jsonb(body.metadata),
+                    actor_user_id,
+                    actor_user_id,
+                    actor_location_id,
+                    actor_location_id,
                 ),
             )
+            shipment_id = cur.fetchone()[0]
             order_stops = conn.execute(
                 """
                 SELECT id, stop_seq, stop_type, location_id, planned_arrival_from, planned_arrival_to, notes
@@ -535,7 +670,6 @@ class TmsService:
                 cur.execute(
                     """
                     INSERT INTO tms.shipment_stops (
-                      id,
                       shipment_id,
                       order_stop_id,
                       stop_seq,
@@ -543,12 +677,15 @@ class TmsService:
                       location_id,
                       appointment_from,
                       appointment_to,
-                      notes
+                      notes,
+                      created_by,
+                      updated_by,
+                      created_location_id,
+                      updated_location_id
                     )
-                    VALUES (%s::uuid, %s::uuid, %s::uuid, %s, %s::tms.stop_type, %s::uuid, %s::timestamptz, %s::timestamptz, %s)
+                    VALUES (%s::uuid, %s::uuid, %s, %s::tms.stop_type, %s::uuid, %s::timestamptz, %s::timestamptz, %s, %s::uuid, %s::uuid, %s::uuid, %s::uuid)
                     """,
                     (
-                        str(uuid4()),
                         shipment_id,
                         stop[0],
                         stop[1],
@@ -557,24 +694,65 @@ class TmsService:
                         stop[4],
                         stop[5],
                         stop[6],
+                        actor_user_id,
+                        actor_user_id,
+                        actor_location_id,
+                        actor_location_id,
                     ),
                 )
             conn.commit()
-        return self.get_shipment_detail(tenant_id, shipment_id)
 
-    def update_shipment_status(self, tenant_id: str, shipment_id: str, status_value: str):
+        payload = self.get_shipment_detail(tenant_id, shipment_id)
+        self._record_audit_event(
+            tenant_id,
+            "shipment",
+            shipment_id,
+            "create",
+            actor_user_id,
+            actor_location_id,
+            after_data=payload,
+        )
+        return payload
+
+    def update_shipment_status(
+        self,
+        tenant_id: str,
+        shipment_id: str,
+        status_value: str,
+        actor_user_id: str | None = None,
+        actor_location_id: str | None = None,
+    ):
+        before_payload = self.get_shipment_detail(tenant_id, shipment_id)
+        if not before_payload:
+            return None
+
         with self.db.connection() as conn, conn.cursor() as cur:
+            self._set_actor_context(cur, actor_user_id, actor_location_id)
             cur.execute(
                 """
                 UPDATE tms.shipments
-                SET status = %s::tms.shipment_status
+                SET
+                  status = %s::tms.shipment_status,
+                  updated_by = %s::uuid,
+                  updated_location_id = %s::uuid
                 WHERE tenant_id = %s::uuid
                   AND id = %s::uuid
                 """,
-                (status_value, tenant_id, shipment_id),
+                (status_value, actor_user_id, actor_location_id, tenant_id, shipment_id),
             )
             conn.commit()
-        return self.get_shipment_detail(tenant_id, shipment_id)
+        payload = self.get_shipment_detail(tenant_id, shipment_id)
+        self._record_audit_event(
+            tenant_id,
+            "shipment",
+            shipment_id,
+            "status_update",
+            actor_user_id,
+            actor_location_id,
+            before_data=before_payload,
+            after_data=payload,
+        )
+        return payload
 
     def list_dispatches(self, tenant_id: str, status_filter: str | None, limit: int, offset: int):
         filters = ["d.tenant_id = %s"]
@@ -641,13 +819,20 @@ class TmsService:
         )
         return _serialize_record(row)
 
-    def create_dispatch(self, tenant_id: str, body: DispatchCreateRequest):
-        dispatch_id = str(uuid4())
+    def create_dispatch(
+        self,
+        tenant_id: str,
+        body: DispatchCreateRequest,
+        actor_user_id: str | None = None,
+        actor_location_id: str | None = None,
+    ):
+        actor_user_id = actor_user_id or body.assigned_by
+
         with self.db.connection() as conn, conn.cursor() as cur:
+            self._set_actor_context(cur, actor_user_id, actor_location_id)
             cur.execute(
                 """
                 INSERT INTO tms.dispatches (
-                  id,
                   tenant_id,
                   shipment_id,
                   carrier_org_id,
@@ -655,41 +840,86 @@ class TmsService:
                   vehicle_id,
                   status,
                   assigned_by,
-                  notes
+                  notes,
+                  created_by,
+                  updated_by,
+                  created_location_id,
+                  updated_location_id
                 )
                 VALUES (
-                  %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s::uuid,
-                  %s::tms.dispatch_status, %s::uuid, %s
+                  %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s::uuid,
+                  %s::tms.dispatch_status, %s::uuid, %s, %s::uuid, %s::uuid, %s::uuid, %s::uuid
                 )
+                RETURNING id::text
                 """,
                 (
-                    dispatch_id,
                     tenant_id,
                     body.shipment_id,
                     body.carrier_org_id,
                     body.driver_id,
                     body.vehicle_id,
                     body.status,
-                    body.assigned_by,
+                    actor_user_id,
                     body.notes,
+                    actor_user_id,
+                    actor_user_id,
+                    actor_location_id,
+                    actor_location_id,
                 ),
             )
+            dispatch_id = cur.fetchone()[0]
             conn.commit()
-        return self.get_dispatch_detail(tenant_id, dispatch_id)
+        payload = self.get_dispatch_detail(tenant_id, dispatch_id)
+        self._record_audit_event(
+            tenant_id,
+            "dispatch",
+            dispatch_id,
+            "create",
+            actor_user_id,
+            actor_location_id,
+            after_data=payload,
+        )
+        return payload
 
-    def update_dispatch_status(self, tenant_id: str, dispatch_id: str, status_value: str):
+    def update_dispatch_status(
+        self,
+        tenant_id: str,
+        dispatch_id: str,
+        status_value: str,
+        actor_user_id: str | None = None,
+        actor_location_id: str | None = None,
+    ):
+        before_payload = self.get_dispatch_detail(tenant_id, dispatch_id)
+        if not before_payload:
+            return None
+
         with self.db.connection() as conn, conn.cursor() as cur:
+            self._set_actor_context(cur, actor_user_id, actor_location_id)
             cur.execute(
                 """
                 UPDATE tms.dispatches
-                SET status = %s::tms.dispatch_status
+                SET
+                  status = %s::tms.dispatch_status,
+                  updated_by = %s::uuid,
+                  updated_location_id = %s::uuid
                 WHERE tenant_id = %s::uuid
                   AND id = %s::uuid
                 """,
-                (status_value, tenant_id, dispatch_id),
+                (status_value, actor_user_id, actor_location_id, tenant_id, dispatch_id),
             )
             conn.commit()
-        return self.get_dispatch_detail(tenant_id, dispatch_id)
+        payload = self.get_dispatch_detail(tenant_id, dispatch_id)
+        self._record_audit_event(
+            tenant_id,
+            "dispatch",
+            dispatch_id,
+            "status_update",
+            actor_user_id,
+            actor_location_id,
+            before_data=before_payload,
+            after_data=payload,
+        )
+        return payload
 
     def get_master_snapshot(self, tenant_id: str):
         organizations = _serialize_records(
